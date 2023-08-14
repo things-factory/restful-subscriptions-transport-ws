@@ -1,6 +1,6 @@
 {
   "name": "@things-factory/restful-subscriptions-transport-ws",
-  "version": "0.12.0",
+  "version": "0.12.1",
   "description": "A temporary makeshift implementation for a single RESTful WebSocket Pub/Sub provider.",
   "main": "dist/index.js",
   "browser": "dist/client.js",
