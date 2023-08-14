@@ -1,20 +1,30 @@
 declare let window: any;
-const _global = typeof global !== 'undefined' ? global : (typeof window !== 'undefined' ? window : {});
+const _global =
+  typeof global !== "undefined"
+    ? global
+    : typeof window !== "undefined"
+    ? window
+    : {};
 const NativeWebSocket = _global.WebSocket || _global.MozWebSocket;
 
-import * as Backoff from 'backo2';
-import { default as EventEmitterType, EventEmitter, ListenerFn } from 'eventemitter3';
-import isString from './utils/is-string';
-import isObject from './utils/is-object';
-import { ExecutionResult } from 'graphql/execution/execute';
-import { print } from 'graphql/language/printer';
-import { DocumentNode } from 'graphql/language/ast';
-import { getOperationAST } from 'graphql/utilities/getOperationAST';
-import $$observable from 'symbol-observable';
+import * as Backoff from "backo2";
+import {
+  default as EventEmitterType,
+  EventEmitter,
+  ListenerFn,
+} from "eventemitter3";
+import isString from "./utils/is-string";
+import isObject from "./utils/is-object";
+import { ExecutionResult } from "graphql/execution/execute";
+import { print } from "graphql/language/printer";
+import { DocumentNode } from "graphql/language/ast";
+import { getOperationAST } from "graphql/utilities/getOperationAST";
+import $$observable from "symbol-observable";
 
-import { GRAPHQL_WS } from './protocol';
-import { MIN_WS_TIMEOUT, WS_TIMEOUT } from './defaults';
-import MessageTypes from './message-types';
+import { GRAPHQL_WS } from "./protocol";
+import { MIN_WS_TIMEOUT, WS_TIMEOUT } from "./defaults";
+import MessageTypes from "./message-types";
+import WebSocket from "ws";
 
 export interface Observer<T> {
   next?: (value: T) => void;
@@ -53,10 +63,13 @@ export interface Middleware {
 }
 
 export type ConnectionParams = {
-  [paramName: string]: any,
+  [paramName: string]: any;
 };
 
-export type ConnectionParamsOptions = ConnectionParams | Function | Promise<ConnectionParams>;
+export type ConnectionParamsOptions =
+  | ConnectionParams
+  | Function
+  | Promise<ConnectionParams>;
 
 export interface ClientOptions {
   connectionParams?: ConnectionParamsOptions;
@@ -98,12 +111,14 @@ export class SubscriptionClient {
   private middlewares: Middleware[];
   private maxConnectTimeGenerator: any;
   private wsOptionArguments: any[];
+  private wsKey: string;
 
   constructor(
     url: string,
     options?: ClientOptions,
     webSocketImpl?: any,
     webSocketProtocols?: string | string[],
+    wsKey?: string
   ) {
     const {
       connectionCallback = undefined,
@@ -115,11 +130,14 @@ export class SubscriptionClient {
       lazy = false,
       inactivityTimeout = 0,
       wsOptionArguments = [],
-    } = (options || {});
+    } = options || {};
 
+    this.wsKey = wsKey;
     this.wsImpl = webSocketImpl || NativeWebSocket;
     if (!this.wsImpl) {
-      throw new Error('Unable to find native implementation, or alternative implementation for WebSocket!');
+      throw new Error(
+        "Unable to find native implementation, or alternative implementation for WebSocket!"
+      );
     }
 
     this.wsProtocols = webSocketProtocols || GRAPHQL_WS;
@@ -167,7 +185,11 @@ export class SubscriptionClient {
         this.clearMaxConnectTimeout();
         this.clearTryReconnectTimeout();
         this.unsubscribeAll();
-        this.sendMessage(undefined, MessageTypes.GQL_CONNECTION_TERMINATE, null);
+        this.sendMessage(
+          undefined,
+          MessageTypes.GQL_CONNECTION_TERMINATE,
+          null
+        );
       }
 
       this.client.close();
@@ -176,7 +198,7 @@ export class SubscriptionClient {
       this.client.onerror = null;
       this.client.onmessage = null;
       this.client = null;
-      this.eventEmitter.emit('disconnected');
+      this.eventEmitter.emit("disconnected");
 
       if (!isForced) {
         this.tryReconnect();
@@ -198,23 +220,25 @@ export class SubscriptionClient {
         return this;
       },
       subscribe(
-        observerOrNext: ((Observer<ExecutionResult>) | ((v: ExecutionResult) => void)),
+        observerOrNext:
+          | Observer<ExecutionResult>
+          | ((v: ExecutionResult) => void),
         onError?: (error: Error) => void,
-        onComplete?: () => void,
+        onComplete?: () => void
       ) {
         const observer = getObserver(observerOrNext, onError, onComplete);
 
         opId = executeOperation(request, (error: Error[], result: any) => {
-          if ( error === null && result === null ) {
-            if ( observer.complete ) {
+          if (error === null && result === null) {
+            if (observer.complete) {
               observer.complete();
             }
           } else if (error) {
-            if ( observer.error ) {
+            if (observer.error) {
               observer.error(error[0]);
             }
           } else {
-            if ( observer.next ) {
+            if (observer.next) {
               observer.next(result);
             }
           }
@@ -222,7 +246,7 @@ export class SubscriptionClient {
 
         return {
           unsubscribe: () => {
-            if ( opId ) {
+            if (opId) {
               unsubscribe(opId);
               opId = null;
             }
@@ -241,36 +265,38 @@ export class SubscriptionClient {
   }
 
   public onConnected(callback: ListenerFn, context?: any): Function {
-    return this.on('connected', callback, context);
+    return this.on("connected", callback, context);
   }
 
   public onConnecting(callback: ListenerFn, context?: any): Function {
-    return this.on('connecting', callback, context);
+    return this.on("connecting", callback, context);
   }
 
   public onDisconnected(callback: ListenerFn, context?: any): Function {
-    return this.on('disconnected', callback, context);
+    return this.on("disconnected", callback, context);
   }
 
   public onReconnected(callback: ListenerFn, context?: any): Function {
-    return this.on('reconnected', callback, context);
+    return this.on("reconnected", callback, context);
   }
 
   public onReconnecting(callback: ListenerFn, context?: any): Function {
-    return this.on('reconnecting', callback, context);
+    return this.on("reconnecting", callback, context);
   }
 
   public onError(callback: ListenerFn, context?: any): Function {
-    return this.on('error', callback, context);
+    return this.on("error", callback, context);
   }
 
   public unsubscribeAll() {
-    Object.keys(this.operations).forEach( subId => {
+    Object.keys(this.operations).forEach((subId) => {
       this.unsubscribe(subId);
     });
   }
 
-  public applyMiddlewares(options: OperationOptions): Promise<OperationOptions> {
+  public applyMiddlewares(
+    options: OperationOptions
+  ): Promise<OperationOptions> {
     return new Promise((resolve, reject) => {
       const queue = (funcs: Middleware[], scope: any) => {
         const next = (error?: any) => {
@@ -296,31 +322,39 @@ export class SubscriptionClient {
 
   public use(middlewares: Middleware[]): SubscriptionClient {
     middlewares.map((middleware) => {
-      if (typeof middleware.applyMiddleware === 'function') {
+      if (typeof middleware.applyMiddleware === "function") {
         this.middlewares.push(middleware);
       } else {
-        throw new Error('Middleware must implement the applyMiddleware function.');
+        throw new Error(
+          "Middleware must implement the applyMiddleware function."
+        );
       }
     });
 
     return this;
   }
 
-  private getConnectionParams(connectionParams: ConnectionParamsOptions): Function {
-    return (): Promise<ConnectionParams> => new Promise((resolve, reject) => {
-      if (typeof connectionParams === 'function') {
-        try {
-          return resolve(connectionParams.call(null));
-        } catch (error) {
-          return reject(error);
+  private getConnectionParams(
+    connectionParams: ConnectionParamsOptions
+  ): Function {
+    return (): Promise<ConnectionParams> =>
+      new Promise((resolve, reject) => {
+        if (typeof connectionParams === "function") {
+          try {
+            return resolve(connectionParams.call(null));
+          } catch (error) {
+            return reject(error);
+          }
         }
-      }
 
-      resolve(connectionParams);
-    });
+        resolve(connectionParams);
+      });
   }
 
-  private executeOperation(options: OperationOptions, handler: (error: Error[], result?: any) => void): string {
+  private executeOperation(
+    options: OperationOptions,
+    handler: (error: Error[], result?: any) => void
+  ): string {
     if (this.client === null) {
       this.connect();
     }
@@ -329,14 +363,14 @@ export class SubscriptionClient {
     this.operations[opId] = { options: options, handler };
 
     this.applyMiddlewares(options)
-      .then(processedOptions => {
+      .then((processedOptions) => {
         this.checkOperationOptions(processedOptions, handler);
         if (this.operations[opId]) {
           this.operations[opId] = { options: processedOptions, handler };
           this.sendMessage(opId, MessageTypes.GQL_START, processedOptions);
         }
       })
-      .catch(error => {
+      .catch((error) => {
         this.unsubscribe(opId);
         handler(this.formatErrors(error));
       });
@@ -345,11 +379,11 @@ export class SubscriptionClient {
   }
 
   private getObserver<T>(
-    observerOrNext: ((Observer<T>) | ((v: T) => void)),
+    observerOrNext: Observer<T> | ((v: T) => void),
     error?: (e: Error) => void,
-    complete?: () => void,
+    complete?: () => void
   ) {
-    if ( typeof observerOrNext === 'function' ) {
+    if (typeof observerOrNext === "function") {
       return {
         next: (v: T) => observerOrNext(v),
         error: (e: Error) => error && error(e),
@@ -383,7 +417,7 @@ export class SubscriptionClient {
       clearTimeout(this.maxConnectTimeoutId);
       this.maxConnectTimeoutId = null;
     }
-    }
+  }
 
   private clearTryReconnectTimeout() {
     if (this.tryReconnectTimeoutId) {
@@ -400,7 +434,10 @@ export class SubscriptionClient {
   }
 
   private setInactivityTimeout() {
-    if (this.inactivityTimeout > 0 && Object.keys(this.operations).length === 0) {
+    if (
+      this.inactivityTimeout > 0 &&
+      Object.keys(this.operations).length === 0
+    ) {
       this.inactivityTimeoutId = setTimeout(() => {
         if (Object.keys(this.operations).length === 0) {
           this.close();
@@ -409,39 +446,49 @@ export class SubscriptionClient {
     }
   }
 
-  private checkOperationOptions(options: OperationOptions, handler: (error: Error[], result?: any) => void) {
+  private checkOperationOptions(
+    options: OperationOptions,
+    handler: (error: Error[], result?: any) => void
+  ) {
     const { query, variables, operationName } = options;
 
     if (!query) {
-      throw new Error('Must provide a query.');
+      throw new Error("Must provide a query.");
     }
 
     if (!handler) {
-      throw new Error('Must provide an handler.');
+      throw new Error("Must provide an handler.");
     }
 
     if (
-      ( !isString(query) && !getOperationAST(query, operationName)) ||
-      ( operationName && !isString(operationName)) ||
-      ( variables && !isObject(variables))
+      (!isString(query) && !getOperationAST(query, operationName)) ||
+      (operationName && !isString(operationName)) ||
+      (variables && !isObject(variables))
     ) {
-      throw new Error('Incorrect option types. query must be a string or a document,' +
-        '`operationName` must be a string, and `variables` must be an object.');
+      throw new Error(
+        "Incorrect option types. query must be a string or a document," +
+          "`operationName` must be a string, and `variables` must be an object."
+      );
     }
   }
 
   private buildMessage(id: string, type: string, payload: any) {
-    const payloadToReturn = payload && payload.query ?
-      {
-        ...payload,
-        query: typeof payload.query === 'string' ? payload.query : print(payload.query),
-      } :
-      payload;
+    const payloadToReturn =
+      payload && payload.query
+        ? {
+            ...payload,
+            query:
+              typeof payload.query === "string"
+                ? payload.query
+                : print(payload.query),
+          }
+        : payload;
 
     return {
       id,
       type,
       payload: payloadToReturn,
+      key: this.wsKey,
     };
   }
 
@@ -461,11 +508,13 @@ export class SubscriptionClient {
       return [errors];
     }
 
-    return [{
-      name: 'FormatedError',
-      message: 'Unknown error',
-      originalError: errors,
-    }];
+    return [
+      {
+        name: "FormatedError",
+        message: "Unknown error",
+        originalError: errors,
+      },
+    ];
   }
 
   private sendMessage(id: string, type: string, payload: any) {
@@ -480,7 +529,10 @@ export class SubscriptionClient {
         try {
           JSON.parse(serializedMessage);
         } catch (e) {
-          this.eventEmitter.emit('error', new Error(`Message must be JSON-serializable. Got: ${message}`));
+          this.eventEmitter.emit(
+            "error",
+            new Error(`Message must be JSON-serializable. Got: ${message}`)
+          );
         }
 
         this.client.send(serializedMessage);
@@ -491,8 +543,14 @@ export class SubscriptionClient {
         break;
       default:
         if (!this.reconnecting) {
-          this.eventEmitter.emit('error', new Error('A message was not sent because socket is not connected, is closing or ' +
-            'is already closed. Message was: ' + JSON.stringify(message)));
+          this.eventEmitter.emit(
+            "error",
+            new Error(
+              "A message was not sent because socket is not connected, is closing or " +
+                "is already closed. Message was: " +
+                JSON.stringify(message)
+            )
+          );
         }
     }
   }
@@ -509,7 +567,11 @@ export class SubscriptionClient {
     if (!this.reconnecting) {
       Object.keys(this.operations).forEach((key) => {
         this.unsentMessagesQueue.push(
-          this.buildMessage(key, MessageTypes.GQL_START, this.operations[key].options),
+          this.buildMessage(
+            key,
+            MessageTypes.GQL_START,
+            this.operations[key].options
+          )
         );
       });
       this.reconnecting = true;
@@ -554,7 +616,7 @@ export class SubscriptionClient {
   }
 
   private connect() {
-    this.client = new this.wsImpl(this.url, this.wsProtocols, ...this.wsOptionArguments);
+    this.client = new WebSocket(this.url);
 
     this.checkMaxConnectTimeout();
 
@@ -562,13 +624,20 @@ export class SubscriptionClient {
       if (this.status === this.wsImpl.OPEN) {
         this.clearMaxConnectTimeout();
         this.closedByUser = false;
-        this.eventEmitter.emit(this.reconnecting ? 'reconnecting' : 'connecting');
+        this.eventEmitter.emit(
+          this.reconnecting ? "reconnecting" : "connecting"
+        );
 
         try {
-          const connectionParams: ConnectionParams = await this.connectionParams();
+          const connectionParams: ConnectionParams =
+            await this.connectionParams();
 
           // Send CONNECTION_INIT message, no need to wait for connection to success (reduce roundtrips)
-          this.sendMessage(undefined, MessageTypes.GQL_CONNECTION_INIT, connectionParams);
+          this.sendMessage(
+            undefined,
+            MessageTypes.GQL_CONNECTION_INIT,
+            connectionParams
+          );
           this.flushUnsentMessagesQueue();
         } catch (error) {
           this.sendMessage(undefined, MessageTypes.GQL_CONNECTION_ERROR, error);
@@ -586,10 +655,10 @@ export class SubscriptionClient {
     this.client.onerror = (err: Error) => {
       // Capture and ignore errors to prevent unhandled exceptions, wait for
       // onclose to fire before attempting a reconnect.
-      this.eventEmitter.emit('error', err);
+      this.eventEmitter.emit("error", err);
     };
 
-    this.client.onmessage = ({ data }: {data: any}) => {
+    this.client.onmessage = ({ data }: { data: any }) => {
       this.processReceivedData(data);
     };
   }
@@ -599,17 +668,39 @@ export class SubscriptionClient {
     let opId: string;
 
     try {
+      if (!receivedData) {
+        return;
+      }
+
       parsedMessage = JSON.parse(receivedData);
-      opId = parsedMessage.id;
+      if (parsedMessage.type === "data") {
+        parsedMessage = {
+          id: "1",
+          payload: {
+            data: {
+              data: {
+                data: parsedMessage.data,
+                tag: parsedMessage.tag,
+              },
+            },
+          },
+          type: parsedMessage.type,
+        };
+        opId = parsedMessage.id;
+      } else {
+        return;
+      }
     } catch (e) {
       throw new Error(`Message must be JSON-parseable. Got: ${receivedData}`);
     }
 
     if (
-      [ MessageTypes.GQL_DATA,
+      [
+        MessageTypes.GQL_DATA,
         MessageTypes.GQL_COMPLETE,
         MessageTypes.GQL_ERROR,
-      ].indexOf(parsedMessage.type) !== -1 && !this.operations[opId]
+      ].indexOf(parsedMessage.type) !== -1 &&
+      !this.operations[opId]
     ) {
       this.unsubscribe(opId);
 
@@ -624,7 +715,10 @@ export class SubscriptionClient {
         break;
 
       case MessageTypes.GQL_CONNECTION_ACK:
-        this.eventEmitter.emit(this.reconnecting ? 'reconnected' : 'connected', parsedMessage.payload);
+        this.eventEmitter.emit(
+          this.reconnecting ? "reconnected" : "connected",
+          parsedMessage.payload
+        );
         this.reconnecting = false;
         this.backoff.reset();
         this.maxConnectTimeGenerator.reset();
@@ -641,18 +735,25 @@ export class SubscriptionClient {
         break;
 
       case MessageTypes.GQL_ERROR:
-        this.operations[opId].handler(this.formatErrors(parsedMessage.payload), null);
+        this.operations[opId].handler(
+          this.formatErrors(parsedMessage.payload),
+          null
+        );
         delete this.operations[opId];
         break;
 
       case MessageTypes.GQL_DATA:
-        const parsedPayload = !parsedMessage.payload.errors ?
-          parsedMessage.payload : {...parsedMessage.payload, errors: this.formatErrors(parsedMessage.payload.errors)};
+        const parsedPayload = !parsedMessage.payload.errors
+          ? parsedMessage.payload
+          : {
+              ...parsedMessage.payload,
+              errors: this.formatErrors(parsedMessage.payload.errors),
+            };
         this.operations[opId].handler(null, parsedPayload);
         break;
 
       case MessageTypes.GQL_CONNECTION_KEEP_ALIVE:
-        const firstKA = typeof this.wasKeepAliveReceived === 'undefined';
+        const firstKA = typeof this.wasKeepAliveReceived === "undefined";
         this.wasKeepAliveReceived = true;
 
         if (firstKA) {
@@ -663,11 +764,14 @@ export class SubscriptionClient {
           clearInterval(this.checkConnectionIntervalId);
           this.checkConnection();
         }
-        this.checkConnectionIntervalId = setInterval(this.checkConnection.bind(this), this.wsTimeout);
+        this.checkConnectionIntervalId = setInterval(
+          this.checkConnection.bind(this),
+          this.wsTimeout
+        );
         break;
 
       default:
-        throw new Error('Invalid message type!');
+        throw new Error("Invalid message type!");
     }
   }
 
