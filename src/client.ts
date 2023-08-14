@@ -24,7 +24,6 @@ import $$observable from "symbol-observable";
 import { GRAPHQL_WS } from "./protocol";
 import { MIN_WS_TIMEOUT, WS_TIMEOUT } from "./defaults";
 import MessageTypes from "./message-types";
-import WebSocket from "ws";
 
 export interface Observer<T> {
   next?: (value: T) => void;
@@ -616,7 +615,12 @@ export class SubscriptionClient {
   }
 
   private connect() {
-    this.client = new WebSocket(this.url);
+    this.client = new window.WebSocket(this.url);
+    // this.client = new this.wsImpl(
+    //   this.url,
+    //   this.wsProtocols,
+    //   ...this.wsOptionArguments
+    // );
 
     this.checkMaxConnectTimeout();
 
